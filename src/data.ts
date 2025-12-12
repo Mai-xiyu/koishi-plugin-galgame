@@ -1,10 +1,11 @@
-// data.ts
+// src/data.ts
 export type Personality = 'loli' | 'ojou' | 'milf' | 'danshi';
 
 export interface ChatMemory {
   role: 'user' | 'assistant' | 'system';
   content: string;
-  uid?: string;
+  uid?: string;      // 用户ID (QQ号)
+  username?: string; // ★ 新增：用户名
   timestamp: number;
 }
 
@@ -29,11 +30,10 @@ export interface UserData {
   lastUpdated: number;
 }
 
-// 扩展 GlobalData，增加黑名单
 export type GlobalData = {
   histories: Record<Personality, ChatMemory[]>;
-  blacklistUsers: string[]; // 黑名单用户ID
-  blacklistGroups: string[]; // 黑名单群组ID
+  blacklistUsers: string[];
+  blacklistGroups: string[];
 };
 
 export const PERSONALITY_INFO = {
@@ -86,7 +86,6 @@ export const PERSONALITY_INFO = {
 export class DataManager {
   private userStore: Map<string, UserData> = new Map();
   
-  // 初始化全局数据，包含黑名单
   private globalData: GlobalData = {
     histories: { loli: [], ojou: [], milf: [], danshi: [] },
     blacklistUsers: [],
@@ -138,13 +137,14 @@ export class DataManager {
     userData.lastUpdated = Date.now();
   }
 
-  // --- 全局记忆操作 ---
+  // --- 全局记忆操作 (更新了 username) ---
 
-  addGlobalMessage(personality: Personality, role: 'user' | 'assistant', content: string, uid?: string): void {
+  addGlobalMessage(personality: Personality, role: 'user' | 'assistant', content: string, uid?: string, username?: string): void {
     this.globalData.histories[personality].push({
       role,
       content,
       uid,
+      username, // ★ 存储用户名
       timestamp: Date.now()
     });
     
@@ -203,13 +203,8 @@ export class DataManager {
       Object.entries(data.users).forEach(([k, v]) => this.userStore.set(k, v as UserData));
     }
     if (data.globalData) {
-      // 兼容旧数据结构 (如果没有blacklist字段，保持默认空数组)
-      this.globalData = {
-        ...this.globalData,
-        ...data.globalData
-      };
+      this.globalData = { ...this.globalData, ...data.globalData };
     } else if (data.globalHistory) {
-      // 兼容上一版结构
       this.globalData.histories = data.globalHistory;
     }
   }

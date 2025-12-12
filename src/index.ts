@@ -43,7 +43,7 @@ export function apply(ctx: Context, config: Config) {
     apiKey: config.deepseekApiKey,
     baseUrl: config.deepseekBaseUrl,
     model: config.deepseekModel,
-    admins: config.admins // ★ 必须加上这一行
+    admins: config.admins // 传入管理员列表
   });
 
   let replyCount = 0;
@@ -95,9 +95,11 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    // 修复：确保 userId 不为 undefined
+    // ★ 关键信息获取：ID 和 用户名
     const userId = session.userId || 'unknown'; 
     const fullUserId = `${session.platform}-${userId}`; 
+    // 获取用户名 (如果获取不到则使用 '未知用户')
+    const username = session.username || session.author?.nickname || session.author?.username || '未知用户';
 
     const userData = dataManager.getUserData(fullUserId);
     const personality = userData.currentPersonality;
@@ -111,43 +113,40 @@ export function apply(ctx: Context, config: Config) {
     try {
       replyCount++;
 
-      dataManager.addGlobalMessage(personality, 'user', userMsg, userId);
+      // ★ 记录历史时存入 username
+      dataManager.addGlobalMessage(personality, 'user', userMsg, userId, username);
       const globalHistory = dataManager.getGlobalHistory(personality).slice(-10);
 
+      // ★ 调用 API 时传入 username
       const response = await deepseekAPI.chat(
         personality, 
         userMsg, 
         globalHistory, 
         currentFav, 
         userData.settings.showInnerThought,
-        userId 
+        userId,
+        username // 传入用户名
       );
 
       dataManager.addGlobalMessage(personality, 'assistant', response.content);
-      const delta = deepseekAPI.analyzeAffinity(userMsg, response.content, currentFav);
+      
+      // ★ 使用 AI 返回的 delta
+      const delta = response.favorabilityDelta;
       const newFav = dataManager.updateFavorability(fullUserId, personality, delta);
 
-      // 6. 生成图片
       const imgBuffer = await bubbleGenerator.generateBubbleImage({
         text: response.content,
         emotion: response.detectedEmotion,
         personality: personality,
         showFavorability: userData.settings.showFavorability,
         favorability: newFav,
-        favorabilityDelta: delta, // ★ 必须加这一行，把变化值传进去
+        favorabilityDelta: delta, // 传入变化值给绘图
         showInnerThought: userData.settings.showInnerThought,
         innerThought: response.innerThought
       });
 
       await session.send(h.image(imgBuffer, 'image/png'));
       
-      // 下面这几行发送文字提示的代码可以删掉了，因为已经在图上显示了
-      /* if (userData.settings.showFavorability && delta !== 0) {
-        const icon = delta > 0 ? '❤️' : '💔';
-        await session.send(`[私有] ${PERSONALITY_INFO[personality].name} 对你的好感 ${icon} ${delta > 0 ? '+' : ''}${delta}`);
-      }
-      */
-
     } catch (e) {
       ctx.logger.error('对话处理错误', e);
       replyCount--;
@@ -155,9 +154,7 @@ export function apply(ctx: Context, config: Config) {
     }
   });
 
-  // --- 指令区域 ---
-
-  // 辅助函数：修复类型报错，允许 undefined 传入
+  // --- 指令区域 (保持不变) ---
   const checkAdmin = (session: Session | undefined) => {
     if (!session || !session.userId) return false;
     return config.admins.includes(session.userId);
@@ -168,9 +165,7 @@ export function apply(ctx: Context, config: Config) {
   ctx.command('galgame.switch <p:string>', '切换你想互动的角色')
     .alias('切换人格')
     .action(async ({ session }, p) => {
-      // 安全检查
       if (!session || !session.userId) return '无法获取用户信息';
-      
       const map: Record<string, Personality> = { 
         '奈奈': 'loli', '萝莉': 'loli', 
         '蕾娜': 'ojou', '御姐': 'ojou', 
@@ -178,7 +173,6 @@ export function apply(ctx: Context, config: Config) {
         '小薰': 'danshi', '男娘': 'danshi' 
       };
       if (!p || !map[p]) return '可选：奈奈、蕾娜、小百合、小薰';
-      
       const userId = `${session.platform}-${session.userId}`;
       dataManager.switchPersonality(userId, map[p]);
       return `你现在开始关注：${PERSONALITY_INFO[map[p]].name}。`;
@@ -189,10 +183,8 @@ export function apply(ctx: Context, config: Config) {
     .action(({ session }, s) => {
         if (!session || !session.userId) return '无法获取用户信息';
         if (!s) return '请输入：开 或 关';
-        
         const val = s.trim().toLowerCase();
         const on = val === '开' || val === 'on' || val === 'true';
-        
         const userId = `${session.platform}-${session.userId}`;
         dataManager.updateSettings(userId, { showFavorability: on });
         return `好感度提示已${on ? '开启' : '关闭'}`;
@@ -203,16 +195,14 @@ export function apply(ctx: Context, config: Config) {
     .action(({ session }, s) => {
         if (!session || !session.userId) return '无法获取用户信息';
         if (!s) return '请输入：开 或 关';
-        
         const val = s.trim().toLowerCase();
         const on = val === '开' || val === 'on' || val === 'true';
-        
         const userId = `${session.platform}-${session.userId}`;
         dataManager.updateSettings(userId, { showInnerThought: on });
         return `心理活动显示已${on ? '开启' : '关闭'}`;
     });
 
-  // 管理员指令：现在 checkAdmin 接受 undefined 了，且 session 做了判空处理
+  // 管理员指令
   ctx.command('galgame.block.user <targetId:string>', '【管理】拉黑用户')
     .action(({ session }, targetId) => {
       if (!checkAdmin(session)) return '权限不足';
