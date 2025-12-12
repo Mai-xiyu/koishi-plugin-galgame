@@ -38,6 +38,12 @@ Bash
 
 npm install koishi-plugin-galgame
 
+或者 git clone https://github.com/Mai-xiyu/koishi-plugin-galgame.git
+
+在koishi\external\目录下
+
+并在插件配置-->全局配置-->添加插件-->搜索galgame  来启用
+
 ## **📂 素材配置 (Resource Setup) \[重要\]**
 
 本插件需要加载本地立绘图片。请在你的电脑或服务器上准备一个文件夹（例如 C:\\galgame-images），并按照以下结构存放图片。
