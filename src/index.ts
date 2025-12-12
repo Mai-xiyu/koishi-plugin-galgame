@@ -1,4 +1,3 @@
-// src/index.ts
 import { Context, Schema, Session, h } from 'koishi';
 import { DataManager, Personality, PERSONALITY_INFO } from './data';
 import { DeepseekAPI } from './deepseek';
@@ -13,7 +12,7 @@ Galgame 插件 (共享世界 + 管理版)
 
 使用：
 - 私聊直接对话，群聊请 @机器人。
-- 管理员可使用 block 指令拉黑用户或群组。
+- 输入 galgame.help 查看详细指令列表。
 `;
 
 export interface Config extends GalgameConfig {}
@@ -39,11 +38,13 @@ export function apply(ctx: Context, config: Config) {
   const configManager = new ConfigManager(config);
   const dataManager = new DataManager();
   const bubbleGenerator = new ChatBubbleGenerator(config.characterImageBasePath);
-  const deepseekAPI = new DeepseekAPI({
+  
+  // 确保这里传入了 ctx (已修复)
+  const deepseekAPI = new DeepseekAPI(ctx, {
     apiKey: config.deepseekApiKey,
     baseUrl: config.deepseekBaseUrl,
     model: config.deepseekModel,
-    admins: config.admins // 传入管理员列表
+    admins: config.admins
   });
 
   let replyCount = 0;
@@ -154,13 +155,41 @@ export function apply(ctx: Context, config: Config) {
     }
   });
 
-  // --- 指令区域 (保持不变) ---
+  // --- 指令区域 ---
+
   const checkAdmin = (session: Session | undefined) => {
     if (!session || !session.userId) return false;
     return config.admins.includes(session.userId);
   };
 
-  ctx.command('galgame', 'Galgame 帮助').action(() => usage);
+  ctx.command('galgame', 'Galgame 插件').action(() => usage);
+
+  // ★ 新增：详细帮助指令 ★
+  ctx.command('galgame.help', '查看指令手册')
+    .alias('galgame帮助')
+    .action(() => {
+      return `
+🎮 Galgame 插件指令手册
+-----------------------
+【基础指令】
+• galgame.switch <角色>
+  切换攻略对象 (可选: 奈奈/蕾娜/小百合/小薰)
+• galgame.fav <开/关>
+  开启或关闭好感度增减提示
+• galgame.mind <开/关>
+  开启或关闭心理活动(读心)显示
+
+【交互方式】
+• 私聊：直接发送消息
+• 群聊：@机器人 + 消息
+
+【管理员指令】
+• galgame.block.user <ID>   - 拉黑用户
+• galgame.unblock.user <ID> - 解禁用户
+• galgame.block.group <群号> - 拉黑群组
+• galgame.unblock.group <群号> - 解禁群组
+      `.trim();
+    });
 
   ctx.command('galgame.switch <p:string>', '切换你想互动的角色')
     .alias('切换人格')
