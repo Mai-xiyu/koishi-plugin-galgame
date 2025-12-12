@@ -1,5 +1,6 @@
 # **koishi-plugin-galgame**
-
+[![npm](https://img.shields.io/npm/v/koishi-plugin-galgame?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-galgame)
+[![GitHub](https://img.shields.io/github/stars/Mai-xiyu/koishi-plugin-galgame?style=flat-square&logo=github)](https://github.com/Mai-xiyu/koishi-plugin-galgame)
 **Galgame 风格的 AI 伴侣插件**。
 
 将 DeepSeek AI 接入 Koishi，体验视觉小说般的对话体验。支持多用户共享记忆、独立好感度系统、自动扣图生成气泡、以及丰富的情绪立绘展示。
