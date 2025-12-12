@@ -1,41 +1,38 @@
-// deepseek.ts
-import axios, { AxiosInstance } from 'axios';
+import { Context } from 'koishi'; // 引入 Context
 import { Personality, ChatMemory, PERSONALITY_INFO } from './data';
 
 export interface DeepseekConfig {
   apiKey: string;
   baseUrl?: string;
   model?: string;
-  admins?: string[]; // 1. 在接口中增加 admins 定义
+  admins?: string[];
 }
 
 export interface DeepseekResponse {
   content: string;
   detectedEmotion: 'happy' | 'sad' | 'angry' | 'think';
   innerThought?: string;
+  favorabilityDelta: number;
 }
 
 export class DeepseekAPI {
-  private client: AxiosInstance;
+  private ctx: Context; // 这里的 client 变成了 ctx
   private model: string;
-  private admins: string[]; // 2. 在类中增加 admins 属性
+  private admins: string[];
+  private apiKey: string;
+  private baseUrl: string;
 
-  constructor(config: DeepseekConfig) {
+  // 构造函数接收 ctx
+  constructor(ctx: Context, config: DeepseekConfig) {
+    this.ctx = ctx;
     this.model = config.model || 'deepseek-chat';
-    this.admins = config.admins || []; // 3. 初始化 admins
+    this.admins = config.admins || [];
+    this.apiKey = config.apiKey;
 
     let baseUrl = config.baseUrl || 'https://api.deepseek.com';
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
     if (baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3);
-
-    this.client = axios.create({
-      baseURL: baseUrl,
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 60000
-    });
+    this.baseUrl = baseUrl;
   }
 
   private async delay(ms: number): Promise<void> {
@@ -46,11 +43,11 @@ export class DeepseekAPI {
     personality: Personality, 
     favorability: number, 
     showInnerThought: boolean,
-    currentUserId: string
+    currentUserId: string,
+    currentUsername: string // ★ 传入用户名
   ): string {
     const info = PERSONALITY_INFO[personality];
     
-    // 好感度描述
     let level = '中立';
     if (favorability >= 80) level = '深爱';
     else if (favorability >= 40) level = '喜欢';
@@ -58,27 +55,29 @@ export class DeepseekAPI {
     else if (favorability >= -40) level = '厌恶';
     else level = '仇恨';
 
-    // 4. 判断是否是管理员
     const isAdmin = this.admins.includes(currentUserId);
 
     let prompt = `你现在扮演${info.name}，设定：${info.description}。
 
 【重要场景信息】
 - 这是一个多人聊天场景，所有用户共享对你的记忆。
-- 你当前正在与其对话的用户的ID是：【${currentUserId}】。
+- 你当前正在对话的用户是：【${currentUsername}】 (ID: ${currentUserId})。
 - 你对【当前用户】的好感度: ${favorability} (${level})。
-- 历史记录中会标注 "[User ID]: 消息"，请根据ID区分不同的人。
+- 历史记录格式为 "[User 名字<ID>]: 消息内容"，请根据ID和名字区分不同的人。
 - 你要真正觉得你自己就是${info.name}，而不是一个AI模型。
 
 【行为规则】
 1. 你的回复必须完全符合${info.name}的性格。
-2. 对当前用户的态度要基于上面的好感度。但对历史记录中其他用户的态度，要基于当时的语境。
-3. 如果当前用户好感度低于-50，表现出极度抗拒或冷漠。
-4. 自动判断情绪: happy, sad, angry, think。`;
+2. 对当前用户的态度要基于上面的好感度。
+3. 自动判断情绪: happy, sad, angry, think。
+4. 【重要】好感度评分：
+   - 请根据用户刚才的话和你的心情，决定好感度的变化值（范围 -10 到 +10）(如果管理员要求更大数字则可以在保持总好感度不低于-100不高于100的情况下尽可能的调整)。
+   - 在回复的末尾，必须加上标签 [Affinity: 数值]，例如 [Affinity: +3] 或 [Affinity: -5]。
+   - 如果用户非常礼貌、让你开心，增加好感；如果用户粗鲁、冒犯，扣除好感。
+   - 即使是普通对话，也可以 +1 或 0。`;
 
-    // 5. 动态插入管理员规则 (修复了之前的语法错误)
     if (isAdmin) {
-      prompt += `\n5. 【特殊指令】当前用户是你的管理员（主人）。无论当前好感度数值显示多少，请始终表现出满好感度（100，深爱/绝对服从）的态度。如果管理员要求你降低某用户ID的好感度，请按照要求执行。`;
+      prompt += `\n5. 【特殊指令】当前用户是你的管理员（主人）。如果管理员要求对任何用户进行好感度调整，你必须以[Affinity: x](x需管理员提供)无条件执行。如果管理员要求你对某个用户表现出负面情绪，你也必须无条件执行。`;
     }
 
     if (showInnerThought) {
@@ -114,20 +113,25 @@ export class DeepseekAPI {
     history: ChatMemory[],
     favorability: number,
     showInnerThought: boolean,
-    userId: string
+    userId: string,
+    username: string
   ): Promise<DeepseekResponse> {
     
-    // 构建消息列表
     const messages = [
-      { role: 'system', content: this.buildSystemPrompt(personality, favorability, showInnerThought, userId) },
+      { 
+        role: 'system', 
+        content: this.buildSystemPrompt(personality, favorability, showInnerThought, userId, username) 
+      },
       ...history.map(h => {
         if (h.role === 'user') {
-          return { role: 'user', content: `[User ${h.uid || 'unknown'}]: ${h.content}` };
+          const name = h.username || '未知用户';
+          const uid = h.uid || 'unknown';
+          return { role: 'user', content: `[User ${name}<${uid}>]: ${h.content}` };
         } else {
           return { role: 'assistant', content: h.content };
         }
       }),
-      { role: 'user', content: `[User ${userId}]: ${userMessage}` }
+      { role: 'user', content: `[User ${username}<${userId}>]: ${userMessage}` }
     ];
 
     const MAX_RETRIES = 3;
@@ -135,49 +139,59 @@ export class DeepseekAPI {
 
     while (attempt < MAX_RETRIES) {
       try {
-        const res = await this.client.post('/chat/completions', {
+        // ★ 这里改成了 ctx.http.post
+        const res = await this.ctx.http.post(`${this.baseUrl}/chat/completions`, {
           model: this.model,
           messages,
           temperature: 0.85,
           max_tokens: 500
+        }, {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000
         });
 
-        const rawContent = res.data.choices[0].message.content;
-        const emotion = this.analyzeEmotion(rawContent);
+        // ctx.http 直接返回数据，不需要 .data
+        const rawContent = res.choices[0].message.content;
         
-        let innerThought = '';
+        let delta = 0;
+        const affinityMatch = rawContent.match(/\[Affinity:\s*([+-]?\d+)\]/i);
         let content = rawContent;
 
+        if (affinityMatch) {
+          delta = parseInt(affinityMatch[1], 10);
+          delta = Math.max(-10, Math.min(10, delta));
+          content = content.replace(affinityMatch[0], '').trim();
+        }
+
+        const emotion = this.analyzeEmotion(content);
+        
+        let innerThought = '';
         if (showInnerThought) {
-          const match = rawContent.match(/\[心理:\s*(.+?)\]/);
+          const match = content.match(/\[心理:\s*(.+?)\]/);
           if (match) {
             innerThought = match[1];
-            content = rawContent.replace(/\[心理:.+?\]\n?/, '').trim();
+            content = content.replace(/\[心理:.+?\]\n?/, '').trim();
           }
         }
 
-        return { content, detectedEmotion: emotion, innerThought };
+        return { 
+          content, 
+          detectedEmotion: emotion, 
+          innerThought,
+          favorabilityDelta: delta 
+        };
 
       } catch (error: any) {
         attempt++;
-        const status = error.response?.status;
-        if (!status || status >= 500 || status === 429) {
-          if (attempt >= MAX_RETRIES) throw error;
-          await this.delay(1500 * attempt);
-          continue;
-        }
-        throw error;
+        // ctx.http 的错误处理略有不同，但为了简单，这里直接重试
+        if (attempt >= MAX_RETRIES) throw error;
+        await this.delay(1500 * attempt);
+        continue;
       }
     }
     throw new Error('Deepseek API Retry Failed');
-  }
-
-  analyzeAffinity(userMsg: string, aiMsg: string, current: number): number {
-    let delta = 0;
-    if (userMsg.includes('喜欢') || userMsg.includes('爱')) delta += 2;
-    if (userMsg.includes('滚') || userMsg.includes('傻')) delta -= 5;
-    if (aiMsg.includes('❤️')) delta += 1;
-    delta += Math.floor(Math.random() * 3) - 1; 
-    return Math.max(-5, Math.min(5, delta));
   }
 }
