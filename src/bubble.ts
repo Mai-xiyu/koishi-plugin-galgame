@@ -86,12 +86,13 @@ export class ChatBubbleGenerator {
     return path.join(this.personalityPath, personalityMap[personality], emotionMap[emotion]);
   }
 
-  // 白底扣图算法
+  // ★ 修复：白底扣图算法 ★
   private async processImageWithTransparentBackground(imgPath: string, maxWidth: number, maxHeight: number): Promise<{ img: Image, w: number, h: number } | null> {
     try {
       const srcImg = await loadImage(imgPath);
       if (srcImg.width === 0) return null;
 
+      // 1. 创建临时画布处理像素
       const tempCanvas = createCanvas(srcImg.width, srcImg.height);
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.drawImage(srcImg, 0, 0);
@@ -99,18 +100,29 @@ export class ChatBubbleGenerator {
       const imgData = tempCtx.getImageData(0, 0, srcImg.width, srcImg.height);
       const data = imgData.data;
       const threshold = 245; 
+      
+      // 2. 像素处理
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
         if (r > threshold && g > threshold && b > threshold) {
-          data[i + 3] = 0; 
+          data[i + 3] = 0; // 设置为透明
         }
       }
+      
+      // 3. 放回像素数据
       tempCtx.putImageData(imgData, 0, 0);
       
+      // ★★★ 核心修复开始 ★★★
+      // 不能直接返回 tempCanvas，必须转成 Buffer 再 load 成 Image
+      // 否则 drawImage 可能会画出空白
+      const buffer = await tempCanvas.encode('png'); 
+      const finalImg = await loadImage(buffer);
+      // ★★★ 核心修复结束 ★★★
+
       const scale = Math.min((maxWidth) / srcImg.width, (maxHeight) / srcImg.height);
-      return { img: tempCanvas as unknown as Image, w: srcImg.width * scale, h: srcImg.height * scale };
+      return { img: finalImg, w: srcImg.width * scale, h: srcImg.height * scale };
     } catch (e) {
       console.error(`[Galgame] 扣图失败: ${e}`);
       return null;
@@ -135,6 +147,10 @@ export class ChatBubbleGenerator {
 
     // 2. 立绘
     const imgPath = this.getImagePath(config.personality, config.emotion);
+    
+    // 添加日志，方便排查路径是否正确
+    // console.log(`[Galgame] Loading image: ${imgPath}`); 
+
     if (fs.existsSync(imgPath)) {
       const processed = await this.processImageWithTransparentBackground(imgPath, width * 0.75, height * 0.95);
       if (processed) {
@@ -145,6 +161,9 @@ export class ChatBubbleGenerator {
         ctx.drawImage(processed.img, dx, dy, processed.w, processed.h);
         ctx.shadowBlur = 0;
       }
+    } else {
+        // 如果图片不存在，在控制台打印警告
+        console.warn(`[Galgame] 图片未找到: ${imgPath}`);
     }
 
     // 3. 对话框

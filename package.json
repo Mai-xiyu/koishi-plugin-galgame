@@ -20,10 +20,19 @@
     "ai"
   ],
   "author": "Mai_xiyu",
+  "contributors": [
+    "Mai_xiyu <mai_xiyu@vip.qq.com>"
+  ],
   "license": "MIT",
   "peerDependencies": {
     "koishi": "^4.0.0"
   },
+  "koishi": {
+    "description": {                  
+      "zh": "将 DeepSeek AI 接入 Koishi，体验视觉小说般的对话体验。支持多用户共享记忆、独立好感度系统、自动扣图生成气泡、以及丰富的情绪立绘展示。"
+    }
+  },
+  "homepage": "https://github.com/Mai-xiyu/koishi-plugin-galgame",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.49"
   },
