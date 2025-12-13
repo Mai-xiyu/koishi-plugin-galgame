@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-galgame",
   "description": "一个融合Galgame和AI的Koishi插件，通过对话提升好感度解锁不同人格",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "files": [
