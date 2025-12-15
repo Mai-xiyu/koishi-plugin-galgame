@@ -164,7 +164,7 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.command('galgame', 'Galgame 插件').action(() => usage);
 
-  // ★ 新增：详细帮助指令 ★
+  // ★ 详细帮助指令 ★
   ctx.command('galgame.help', '查看指令手册')
     .alias('galgame帮助')
     .action(() => {
@@ -179,15 +179,13 @@ export function apply(ctx: Context, config: Config) {
 • galgame.mind <开/关>
   开启或关闭心理活动(读心)显示
 
-【交互方式】
-• 私聊：直接发送消息
-• 群聊：@机器人 + 消息
-
 【管理员指令】
-• galgame.block.user <ID>   - 拉黑用户
-• galgame.unblock.user <ID> - 解禁用户
-• galgame.block.group <群号> - 拉黑群组
-• galgame.unblock.group <群号> - 解禁群组
+• galgame.resetAI <目标>
+  重置AI记忆 (目标: all 或 奈奈/蕾娜...)
+• galgame.block.user <ID>
+  拉黑用户
+• galgame.block.group <群号>
+  拉黑群组
       `.trim();
     });
 
@@ -231,7 +229,43 @@ export function apply(ctx: Context, config: Config) {
         return `心理活动显示已${on ? '开启' : '关闭'}`;
     });
 
-  // 管理员指令
+  // --- 管理员指令区域 ---
+
+  // ★ 新增：重置 AI 记忆指令 ★
+  ctx.command('galgame.resetAI <target:string>', '【管理】重置AI记忆')
+    .alias('重置记忆')
+    .action(({ session }, target) => {
+      if (!checkAdmin(session)) return '权限不足';
+      if (!target) return '请输入目标：all, loli, ojou, milf, danshi (或中文名)';
+
+      const lowerTarget = target.toLowerCase();
+
+      // 定义所有可用人格
+      const personalities: Personality[] = ['loli', 'ojou', 'milf', 'danshi'];
+
+      // 处理 "all"
+      if (lowerTarget === 'all' || lowerTarget === '所有') {
+        personalities.forEach(p => dataManager.clearGlobalHistory(p));
+        return '✅ 已重置所有角色的记忆（世界线已重置）。';
+      }
+
+      // 映射表 (支持中英文、代码名、文件夹名)
+      const map: Record<string, Personality> = {
+        'loli': 'loli', '奈奈': 'loli', '萝莉': 'loli',
+        'ojou': 'ojou', '蕾娜': 'ojou', '御姐': 'ojou', 'gril': 'ojou',
+        'milf': 'milf', '小百合': 'milf', '少妇': 'milf', 'woman': 'milf',
+        'danshi': 'danshi', '小薰': 'danshi', '男娘': 'danshi', 'mft': 'danshi'
+      };
+
+      const p = map[lowerTarget];
+      if (p) {
+        dataManager.clearGlobalHistory(p);
+        return `✅ 已重置 ${PERSONALITY_INFO[p].name} 的记忆。`;
+      }
+
+      return '❌ 无效目标。可选：all, 奈奈, 蕾娜, 小百合, 小薰';
+    });
+
   ctx.command('galgame.block.user <targetId:string>', '【管理】拉黑用户')
     .action(({ session }, targetId) => {
       if (!checkAdmin(session)) return '权限不足';
