@@ -114,12 +114,9 @@ export class ChatBubbleGenerator {
       // 3. 放回像素数据
       tempCtx.putImageData(imgData, 0, 0);
       
-      // ★★★ 核心修复开始 ★★★
       // 不能直接返回 tempCanvas，必须转成 Buffer 再 load 成 Image
-      // 否则 drawImage 可能会画出空白
       const buffer = await tempCanvas.encode('png'); 
       const finalImg = await loadImage(buffer);
-      // ★★★ 核心修复结束 ★★★
 
       const scale = Math.min((maxWidth) / srcImg.width, (maxHeight) / srcImg.height);
       return { img: finalImg, w: srcImg.width * scale, h: srcImg.height * scale };
@@ -129,46 +126,104 @@ export class ChatBubbleGenerator {
     }
   }
 
+  // ★ 新增：计算文字高度的方法 ★
+  private measureTextHeight(ctx: SKRSContext2D, text: string, maxW: number, font: string, fontSize: number, lineHeight: number): number {
+    ctx.font = `${fontSize}px ${font}`;
+    const chars = text.split('');
+    let line = '';
+    let height = lineHeight; // 至少有一行
+
+    for (const c of chars) {
+      if (ctx.measureText(line + c).width > maxW && line !== '') {
+        height += lineHeight;
+        line = c;
+      } else {
+        line += c;
+      }
+    }
+    return height;
+  }
+
   async generateBubbleImage(config: BubbleConfig): Promise<Buffer> {
     const style = this.styles[config.personality];
     const info = PERSONALITY_INFO[config.personality];
-    const width = 800;
-    const height = 600;
     
+    // 基础尺寸配置
+    const baseWidth = 800;
+    const baseHeight = 600; // 原始基准高度
+    const minBoxHeight = 220;
+    const paddingX = 30; // 文字左右边距
+    const maxTextW = baseWidth - 40 - (paddingX * 2); 
+    const lineHeight = 34;
+    const thoughtLineHeight = 28;
+
+    // ★ 1. 预计算高度 ★
+    const tempCanvas = createCanvas(1, 1);
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    let totalTextHeight = 0;
+
+    // 计算心理活动高度
+    if (config.showInnerThought && config.innerThought) {
+      const thoughtText = `(💭 ${config.innerThought})`;
+      const h = this.measureTextHeight(tempCtx, thoughtText, maxTextW, style.font, 20, thoughtLineHeight);
+      totalTextHeight += h + 10; // +10 是间距
+    }
+
+    // 计算正文高度
+    const mainTextHeight = this.measureTextHeight(tempCtx, config.text, maxTextW, style.font, 26, lineHeight);
+    totalTextHeight += mainTextHeight;
+
+    // 计算需要的对话框高度
+    const requiredBoxH = totalTextHeight + 70;
+    
+    // 决定最终高度
+    const boxH = Math.max(minBoxHeight, requiredBoxH);
+    const heightDelta = boxH - minBoxHeight;
+    
+    const width = baseWidth;
+    const height = baseHeight + heightDelta; // 画布总高增加
+
+    // ★ 2. 创建真实画布 ★
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // 1. 背景
+    // 3. 背景 (渐变背景需要填充整个新高度)
     const grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, style.bgGradient[0]);
     grad.addColorStop(1, style.bgGradient[1]);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // 2. 立绘
+    // 4. 立绘 (关键修改点)
     const imgPath = this.getImagePath(config.personality, config.emotion);
-    
-    // 添加日志，方便排查路径是否正确
-    // console.log(`[Galgame] Loading image: ${imgPath}`); 
-
     if (fs.existsSync(imgPath)) {
-      const processed = await this.processImageWithTransparentBackground(imgPath, width * 0.75, height * 0.95);
+      // ⚠️ 修改1：限制高度使用 baseHeight 而不是 height
+      // 这样无论文字多长，人物都不会被不按比例拉大
+      const processed = await this.processImageWithTransparentBackground(imgPath, width * 0.75, baseHeight * 0.95);
       if (processed) {
         const dx = (width - processed.w) / 2 + 120;
-        const dy = height - processed.h;
+        
+        // ⚠️ 修改2：对齐到底部使用 baseHeight
+        // 也就是让人物始终站在“原来那个屏幕”的底部，不要跟着长图往下跑
+        // 这样人物就会被固定在图片的上半部分，被气泡正常遮挡下半身
+        const dy = baseHeight - processed.h; 
+        
         ctx.shadowColor = 'rgba(0,0,0,0.1)';
         ctx.shadowBlur = 10;
         ctx.drawImage(processed.img, dx, dy, processed.w, processed.h);
         ctx.shadowBlur = 0;
       }
     } else {
-        // 如果图片不存在，在控制台打印警告
         console.warn(`[Galgame] 图片未找到: ${imgPath}`);
     }
 
-    // 3. 对话框
-    const boxH = 220;
-    const boxY = height - boxH - 20;
+    // 5. 对话框 (向下延伸)
+    // boxY 计算公式保持不变：总高 - 盒子高 - 20
+    // 原来：600 - 220 - 20 = 360
+    // 现在：(600+X) - (220+X) - 20 = 360
+    // 结论：对话框的“上边缘”始终固定在 360px，盒子只会向下变长。
+    const boxY = height - boxH - 20; 
     const boxX = 20;
     const boxW = width - 40;
 
@@ -180,7 +235,7 @@ export class ChatBubbleGenerator {
     ctx.fill();
     ctx.stroke();
 
-    // 4. 名字标签
+    // 6. 名字标签
     const tagW = 140;
     const tagH = 40;
     const tagY = boxY - 30;
@@ -196,11 +251,9 @@ export class ChatBubbleGenerator {
     ctx.fillText(info.name, boxX + tagW/2, tagY + tagH/2);
     ctx.restore();
 
-    // 5. 文字内容
+    // 7. 文字内容
     let textY = boxY + 35;
-    const textX = boxX + 30;
-    const maxTextW = boxW - 60;
-    const lineHeight = 34;
+    const textX = boxX + paddingX;
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -209,7 +262,7 @@ export class ChatBubbleGenerator {
       ctx.fillStyle = style.textSub;
       ctx.font = `italic 20px ${style.font}`;
       const thought = `(💭 ${config.innerThought})`;
-      textY = this.wrapText(ctx, thought, textX, textY, maxTextW, 28);
+      textY = this.wrapText(ctx, thought, textX, textY, maxTextW, thoughtLineHeight);
       textY += 10;
     }
 
@@ -217,7 +270,7 @@ export class ChatBubbleGenerator {
     ctx.font = `26px ${style.font}`;
     this.wrapText(ctx, config.text, textX, textY, maxTextW, lineHeight);
 
-    // 6. 绘制好感度条 (调用新的逻辑)
+    // 8. 绘制好感度条
     if (config.showFavorability && config.favorability !== undefined) {
       this.drawBar(
         ctx, 
@@ -238,50 +291,36 @@ export class ChatBubbleGenerator {
   private drawBar(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, val: number, delta: number | undefined, style: UIStyle) {
     ctx.save();
     
-    // 1. 绘制底槽 (半透明黑)
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     this.roundRect(ctx, x, y, w, h, h/2);
     ctx.fill();
 
-    // 2. 计算填充
-    // 限制在 -100 到 100
     const safeVal = Math.max(-100, Math.min(100, val));
-    
-    // 中点位置
     const midPoint = x + w / 2;
-    
-    // 填充长度：(绝对值 / 100) * 半条长度
-    // 比如 50好感度 = 0.5 * 100像素 = 50像素宽
     const fillWidth = (Math.abs(safeVal) / 100) * (w / 2);
 
-    // 3. 绘制填充
     ctx.beginPath();
-    this.roundRect(ctx, x, y, w, h, h/2); // 裁剪防止溢出
+    this.roundRect(ctx, x, y, w, h, h/2);
     ctx.clip();
 
     if (safeVal > 0) {
-      // 🩷 好感模式：从中间 -> 向右
       const grad = ctx.createLinearGradient(midPoint, y, midPoint + fillWidth, y);
-      grad.addColorStop(0, style.barStart); // 浅色
-      grad.addColorStop(1, style.barEnd);   // 深色
+      grad.addColorStop(0, style.barStart);
+      grad.addColorStop(1, style.barEnd);
       ctx.fillStyle = grad;
       ctx.fillRect(midPoint, y, fillWidth, h);
     } else if (safeVal < 0) {
-      // 💔 讨厌模式：从中间 -> 向左
-      // 注意：fillRect 的宽度必须是正数，所以起点是 (mid - width)
       const grad = ctx.createLinearGradient(midPoint, y, midPoint - fillWidth, y);
-      grad.addColorStop(0, '#8B0000'); // 深红 (中间)
-      grad.addColorStop(1, '#FF0000'); // 鲜红 (边缘)
+      grad.addColorStop(0, '#8B0000');
+      grad.addColorStop(1, '#FF0000');
       ctx.fillStyle = grad;
       ctx.fillRect(midPoint - fillWidth, y, fillWidth, h);
     }
 
-    // 4. 绘制中界线 (0点)
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.fillRect(midPoint - 1, y, 2, h);
 
-    // 5. 绘制数值 (位于条的中间)
-    ctx.restore(); // 恢复clip
+    ctx.restore();
     ctx.save();
     ctx.fillStyle = '#FFF';
     ctx.font = `bold 16px ${style.font}`;
@@ -289,22 +328,17 @@ export class ChatBubbleGenerator {
     ctx.textBaseline = 'middle';
     ctx.shadowColor = 'black';
     ctx.shadowBlur = 2;
-    // 直接显示数值，例如 "0", "50", "-20"
     ctx.fillText(`${val}`, x + w/2, y + h/2);
 
-    // 6. 绘制增减提示 (+x / -x)
     if (delta !== undefined && delta !== 0) {
       const sign = delta > 0 ? '+' : '';
       const deltaText = `${sign}${delta}`;
       
       ctx.font = `bold 20px ${style.font}`;
-      // 正数粉色，负数蓝灰色
       ctx.fillStyle = delta > 0 ? '#FF69B4' : '#B0C4DE'; 
       ctx.shadowBlur = 0;
       
-      // 绘制在进度条【右上方】
       ctx.textAlign = 'right';
-      // 移除了 Emoji，解决了方框问题
       ctx.fillText(deltaText, x + w + 5, y - 5);
     }
 
