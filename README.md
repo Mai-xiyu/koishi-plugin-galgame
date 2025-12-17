@@ -1,5 +1,6 @@
 # **koishi-plugin-galgame**
 
+[![Koishi 论坛](https://img.shields.io/badge/Koishi-论坛主题-blue?logo=discourse&logoColor=white)](https://forum.koishi.xyz/t/topic/12047)
 [![npm](https://img.shields.io/npm/v/koishi-plugin-galgame?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-galgame)
 [![GitHub](https://img.shields.io/github/stars/Mai-xiyu/koishi-plugin-galgame?style=flat-square&logo=github)](https://github.com/Mai-xiyu/koishi-plugin-galgame)
 
