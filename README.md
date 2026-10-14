@@ -44,7 +44,9 @@ npm install koishi-plugin-galgame
 
 ## 📂 素材配置 (Resource Setup) **[重要]**
 
-本插件需要加载本地立绘图片。请在你的电脑或服务器上准备一个文件夹（例如 `C:\galgame-images`），并按照以下结构存放图片。
+npm 包已包含全部 4 个人物、16 张情绪立绘，安装后无需另行下载或配置素材。`characterImageBasePath` 留空即可使用内置立绘，路径按插件安装位置解析，不依赖 Koishi 的工作目录。
+
+如需替换立绘，请在你的电脑或服务器上准备一个文件夹（例如 `C:\galgame-images`），将其绝对路径填入 `characterImageBasePath`，并按照以下结构存放图片。自定义目录中缺失的图片会逐张回退到内置立绘；旧版本保存的无效路径也会自动回退。
 
 **⚠️ 注意：文件夹名称必须严格一致！**
 
@@ -68,7 +70,7 @@ npm install koishi-plugin-galgame
     ├── ...
 ```
 
-> **图片说明**：推荐 `.png` 或 `.jpg`。背景可以是白底（插件会自动变透明）或透明底。
+> **图片说明**：文件名必须使用上面列出的 `.png` 名称。背景可以是白底（插件会自动变透明）或透明底。
 
 ## ⚙️ 配置项 (Configuration)
 
@@ -78,7 +80,7 @@ npm install koishi-plugin-galgame
 | :--- | :--- | :--- |
 | `deepseekApiKey` | **必填**，你的 DeepSeek API Key | - |
 | `deepseekBaseUrl` | DeepSeek API 地址 | `https://api.deepseek.com` |
-| `characterImageBasePath` | **必填**，上面提到的素材根目录绝对路径 | - |
+| `characterImageBasePath` | 可选，自定义素材根目录绝对路径；缺失图片回退到内置立绘 | 空（使用内置立绘） |
 | `admins` | 管理员 QQ 号列表 (拥有重置记忆、拉黑等权限) | `[]` |
 | `maxRepliesPerMinute` | 全局每分钟最大回复次数 (防刷屏) | `30` |
 | `enableFavorabilityDisplay` | 默认是否显示好感度变化提示 | `false` |

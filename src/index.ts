@@ -26,7 +26,7 @@ export const Config: Schema<Config> = Schema.object({
   enableFavorabilityDisplay: Schema.boolean().default(false).description('默认显示好感度'),
   enableInnerThought: Schema.boolean().default(false).description('默认显示心理活动'),
   minFavorabilityToRespond: Schema.number().default(-50).description('最低回复好感度'),
-  characterImageBasePath: Schema.string().default('C:\\Users\\25463\\Desktop\\friend\\koishi\\external\\koishi-galgame-plugin').description('图片根目录'),
+  characterImageBasePath: Schema.string().default('').description('自定义图片根目录；留空使用内置立绘，缺失图片回退到内置立绘'),
   maxResponseLength: Schema.number().default(500).description('最大回复长度'),
   responseTimeout: Schema.number().default(60000).description('超时时间'),
   enableDataPersistence: Schema.boolean().default(true).description('开启存档'),

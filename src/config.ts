@@ -27,7 +27,7 @@ export const DEFAULT_CONFIG: GalgameConfig = {
   enableFavorabilityDisplay: false,
   enableInnerThought: false,
   minFavorabilityToRespond: -50,
-  characterImageBasePath: 'C:\\Users\\25463\\Desktop\\friend\\koishi\\external\\koishi-galgame-plugin',
+  characterImageBasePath: '',
   maxResponseLength: 500,
   responseTimeout: 60000,
   enableDataPersistence: true,

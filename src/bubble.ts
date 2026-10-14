@@ -30,6 +30,7 @@ interface UIStyle {
 
 export class ChatBubbleGenerator {
   private personalityPath: string;
+  private readonly bundledImagePath = path.resolve(__dirname, '..');
   // 增加字体备选，防止Linux显示方框
   private defaultFont = '"Microsoft YaHei", "SimHei", "WenQuanYi Micro Hei", sans-serif';
 
@@ -76,14 +77,14 @@ export class ChatBubbleGenerator {
     }
   };
 
-  constructor(basePath: string) {
-    this.personalityPath = path.normalize(basePath);
+  constructor(basePath: string = '') {
+    this.personalityPath = basePath.trim() ? path.resolve(basePath) : this.bundledImagePath;
   }
 
   private getImagePath(personality: Personality, emotion: 'happy' | 'sad' | 'angry' | 'think'): string {
-    const personalityMap = { loli: 'loli', ojou: 'gril', milf: 'woman', danshi: 'mft' };
-    const emotionMap = { happy: 'happy.png', sad: 'sad.png', angry: 'angry.png', think: 'think.png' };
-    return path.join(this.personalityPath, personalityMap[personality], emotionMap[emotion]);
+    const relativePath = path.join(PERSONALITY_INFO[personality].folderName, `${emotion}.png`);
+    const customImagePath = path.join(this.personalityPath, relativePath);
+    return fs.existsSync(customImagePath) ? customImagePath : path.join(this.bundledImagePath, relativePath);
   }
 
   // ★ 修复：白底扣图算法 ★
